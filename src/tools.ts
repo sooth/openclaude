@@ -1,6 +1,9 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
+import { ParallelAgentsTool } from './tools/ParallelAgentsTool/ParallelAgentsTool.js'
+import { ParallelBatchOutputTool } from './tools/ParallelBatchOutputTool/ParallelBatchOutputTool.js'
+import { ParallelAgentWorkflowTool } from './tools/ParallelAgentWorkflowTool/ParallelAgentWorkflowTool.js'
 import { SkillTool } from './tools/SkillTool/SkillTool.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
 import { FileEditTool } from './tools/FileEditTool/FileEditTool.js'
@@ -193,6 +196,9 @@ export function getToolsForDefaultPreset(): string[] {
 export function getAllBaseTools(): Tools {
   return [
     AgentTool,
+    ParallelAgentsTool,
+    ParallelBatchOutputTool,
+    ParallelAgentWorkflowTool,
     TaskOutputTool,
     BashTool,
     // Ant-native builds have bfs/ugrep embedded in the bun binary (same ARGV0
