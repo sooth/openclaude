@@ -567,10 +567,12 @@ async function* openaiStreamToAnthropic(
   const activeToolCalls = new Map<
     number,
     {
-      id: string
-      name: string
-      index: number
+      id?: string
+      name?: string
+      index?: number
       jsonBuffer: string
+      started: boolean
+      extra_content?: Record<string, unknown>
       normalizeAtStop: boolean
     }
   >()
@@ -679,7 +681,27 @@ async function* openaiStreamToAnthropic(
         // Tool calls
         if (delta.tool_calls) {
           for (const tc of delta.tool_calls) {
-            if (tc.id && tc.function?.name) {
+            const active = activeToolCalls.get(tc.index) ?? {
+              jsonBuffer: '',
+              started: false,
+              normalizeAtStop: false,
+            }
+
+            if (tc.id) {
+              active.id = tc.id
+            }
+            if (tc.function?.name) {
+              active.name = tc.function.name
+              active.normalizeAtStop = hasToolFieldMapping(tc.function.name)
+            }
+            if (tc.extra_content) {
+              active.extra_content = tc.extra_content
+            }
+            if (tc.function?.arguments) {
+              active.jsonBuffer += tc.function.arguments
+            }
+
+            if (!active.started && active.id && active.name) {
               // New tool call starting — close any open thinking block first
               if (hasEmittedThinkingStart && !hasClosedThinking) {
                 yield { type: 'content_block_stop', index: contentBlockIndex }
@@ -696,29 +718,24 @@ async function* openaiStreamToAnthropic(
               }
 
               const toolBlockIndex = contentBlockIndex
-              const initialArguments = tc.function.arguments ?? ''
-              const normalizeAtStop = hasToolFieldMapping(tc.function.name)
-              activeToolCalls.set(tc.index, {
-                id: tc.id,
-                name: tc.function.name,
-                index: toolBlockIndex,
-                jsonBuffer: initialArguments,
-                normalizeAtStop,
-              })
+              active.index = toolBlockIndex
+              active.started = true
 
               yield {
                 type: 'content_block_start',
                 index: toolBlockIndex,
                 content_block: {
                   type: 'tool_use',
-                  id: tc.id,
-                  name: tc.function.name,
+                  id: active.id,
+                  name: active.name,
                   input: {},
-                  ...(tc.extra_content ? { extra_content: tc.extra_content } : {}),
+                  ...(active.extra_content
+                    ? { extra_content: active.extra_content }
+                    : {}),
                   // Extract Gemini signature from extra_content
-                  ...((tc.extra_content?.google as any)?.thought_signature
+                  ...((active.extra_content?.google as any)?.thought_signature
                     ? {
-                        signature: (tc.extra_content.google as any)
+                        signature: (active.extra_content!.google as any)
                           .thought_signature,
                       }
                     : {}),
@@ -726,39 +743,33 @@ async function* openaiStreamToAnthropic(
               }
               contentBlockIndex++
 
-              // Emit any initial arguments
-              if (tc.function.arguments && !normalizeAtStop) {
+              if (active.jsonBuffer && !active.normalizeAtStop) {
                 yield {
                   type: 'content_block_delta',
                   index: toolBlockIndex,
                   delta: {
                     type: 'input_json_delta',
-                    partial_json: tc.function.arguments,
+                    partial_json: active.jsonBuffer,
                   },
                 }
               }
-            } else if (tc.function?.arguments) {
-              // Continuation of existing tool call
-              const active = activeToolCalls.get(tc.index)
-              if (active) {
-                if (tc.function.arguments) {
-                  active.jsonBuffer += tc.function.arguments
-                }
-
-                if (active.normalizeAtStop) {
-                  continue
-                }
-
-                yield {
-                  type: 'content_block_delta',
-                  index: active.index,
-                  delta: {
-                    type: 'input_json_delta',
-                    partial_json: tc.function.arguments,
-                  },
-                }
+            } else if (
+              active.started &&
+              active.index !== undefined &&
+              tc.function?.arguments &&
+              !active.normalizeAtStop
+            ) {
+              yield {
+                type: 'content_block_delta',
+                index: active.index,
+                delta: {
+                  type: 'input_json_delta',
+                  partial_json: tc.function.arguments,
+                },
               }
             }
+
+            activeToolCalls.set(tc.index, active)
           }
         }
 
