@@ -142,6 +142,24 @@ export function useTextInput({
   const getLiveValue = (): string => liveValueRef.current
   const getLiveCursor = (): Cursor =>
     Cursor.fromText(liveValueRef.current, columns, liveOffsetRef.current)
+  const setValue = (nextValue: string, nextOffset = liveOffsetRef.current): void => {
+    const previousValue = liveValueRef.current
+    const previousOffset = liveOffsetRef.current
+
+    if (previousValue === nextValue && previousOffset === nextOffset) {
+      return
+    }
+
+    updateRenderedInput(nextValue, nextOffset)
+
+    if (previousValue !== nextValue) {
+      onChange(nextValue)
+    }
+
+    if (previousOffset !== nextOffset) {
+      onOffsetChange(nextOffset)
+    }
+  }
   const setOffset = (nextOffset: number): void => {
     if (nextOffset === liveOffsetRef.current) {
       return
@@ -521,13 +539,7 @@ export function useTextInput({
 
       // Update state once with the final result
       if (!currentCursor.equals(nextCursor)) {
-        updateRenderedInput(nextCursor.text, nextCursor.offset)
-        if (currentCursor.text !== nextCursor.text) {
-          onChange(nextCursor.text)
-        }
-        if (currentCursor.offset !== nextCursor.offset) {
-          onOffsetChange(nextCursor.offset)
-        }
+        setValue(nextCursor.text, nextCursor.offset)
       }
       resetKillAccumulation()
       resetYankState()
@@ -547,13 +559,7 @@ export function useTextInput({
     const nextCursor = mapKey(key, currentCursor)(filteredInput)
     if (nextCursor) {
       if (!currentCursor.equals(nextCursor)) {
-        updateRenderedInput(nextCursor.text, nextCursor.offset)
-        if (currentCursor.text !== nextCursor.text) {
-          onChange(nextCursor.text)
-        }
-        if (currentCursor.offset !== nextCursor.offset) {
-          onOffsetChange(nextCursor.offset)
-        }
+        setValue(nextCursor.text, nextCursor.offset)
       }
       // SSH-coalesced Enter: on slow links, "o" + Enter can arrive as one
       // chunk "o\r". parseKeypress only matches s === '\r', so it hit the
@@ -594,6 +600,7 @@ export function useTextInput({
       maxVisibleLines,
     ),
     offset,
+    setValue,
     setOffset,
     cursorLine: cursorPos.line - cursor.getViewportStartLine(maxVisibleLines),
     cursorColumn: cursorPos.column,

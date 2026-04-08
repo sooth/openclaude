@@ -145,6 +145,14 @@ export function isXtermJs(): boolean {
   return xtversionName?.startsWith('xterm.js') ?? false
 }
 
+/** Ghostty currently repaints main-screen prompt updates more reliably
+ *  without DEC 2026 synchronized output. We key this off XTVERSION instead
+ *  of TERM_PROGRAM so tests and unsupported terminals keep existing behavior
+ *  until the live terminal positively identifies itself. */
+export function shouldSkipMainScreenSyncMarkers(): boolean {
+  return xtversionName?.toLowerCase().startsWith('ghostty') ?? false
+}
+
 // Terminals known to correctly implement the Kitty keyboard protocol
 // (CSI >1u) and/or xterm modifyOtherKeys (CSI >4;2m) for ctrl+shift+<letter>
 // disambiguation. We previously enabled unconditionally (#23350), assuming

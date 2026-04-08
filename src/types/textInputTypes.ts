@@ -229,6 +229,7 @@ export type BaseInputState = {
   value: string
   renderedValue: string
   offset: number
+  setValue: (value: string, offset?: number) => void
   setOffset: (offset: number) => void
   /** Cursor line (0-indexed) within the rendered text, accounting for wrapping. */
   cursorLine: number
