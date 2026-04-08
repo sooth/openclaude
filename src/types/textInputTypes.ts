@@ -226,6 +226,7 @@ export type VimMode = 'INSERT' | 'NORMAL'
  */
 export type BaseInputState = {
   onInput: (input: string, key: Key) => void
+  value: string
   renderedValue: string
   offset: number
   setOffset: (offset: number) => void

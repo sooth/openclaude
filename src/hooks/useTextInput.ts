@@ -585,6 +585,7 @@ export function useTextInput({
 
   return {
     onInput,
+    value,
     renderedValue: cursor.render(
       cursorChar,
       mask,
