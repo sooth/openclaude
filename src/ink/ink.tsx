@@ -177,6 +177,10 @@ export default class Ink {
     x: number;
     y: number;
   } | null = null;
+  private debugRenderTrace: {
+    label: string;
+    remaining: number;
+  } | null = null;
   private reportRenderError = (label: string, error: unknown): void => {
     const message =
       error instanceof Error ? `${error.name}: ${error.message}` : String(error);
@@ -302,6 +306,12 @@ export default class Ink {
         rendererPackageName: 'ink'
       });
     }
+  }
+  noteDebugInput(label: string, frames = 3): void {
+    this.debugRenderTrace = {
+      label,
+      remaining: frames
+    };
   }
   private handleResume = () => {
     if (!this.options.stdout.isTTY) {
@@ -760,6 +770,23 @@ export default class Ink {
     }
     const tWrite = performance.now();
     const skipSyncMarkers = this.altScreenActive ? !SYNC_OUTPUT_SUPPORTED : shouldSkipMainScreenSyncMarkers();
+    if (this.debugRenderTrace && !this.altScreenActive) {
+      const {
+        label,
+        remaining
+      } = this.debugRenderTrace;
+      logForDebugging(`[render-trace:${label}] screen=${frame.screen.width}x${frame.screen.height} cursor=(${frame.cursor.x},${frame.cursor.y}) visible=${frame.cursor.visible} patches=${optimized.length} syncSkipped=${skipSyncMarkers}`);
+      logForDebugging(`[render-trace:${label}] rows ${formatFrameTailRows(frame, 4)}`);
+      logForDebugging(`[render-trace:${label}] patchTypes ${summarizePatchTypes(optimized)}`);
+      const stdoutSnippet = getStdoutPatchSnippet(optimized, 240);
+      if (stdoutSnippet.length > 0) {
+        logForDebugging(`[render-trace:${label}] stdout ${JSON.stringify(stdoutSnippet)}`);
+      }
+      this.debugRenderTrace = remaining > 1 ? {
+        label,
+        remaining: remaining - 1
+      } : null;
+    }
     writeDiffToTerminal(this.terminal, optimized, skipSyncMarkers);
     const writeMs = performance.now() - tWrite;
 
@@ -1666,6 +1693,50 @@ export default class Ink {
       }
     };
   }
+}
+
+function formatFrameTailRows(frame: Frame, maxRows: number): string {
+  const start = Math.max(0, frame.screen.height - maxRows);
+  const rows: string[] = [];
+  for (let y = start; y < frame.screen.height; y++) {
+    let line = '';
+    for (let x = 0; x < frame.screen.width; x++) {
+      const cell = cellAt(frame.screen, x, y);
+      if (cell && cell.width !== CellWidth.SpacerTail) {
+        line += cell.char;
+      }
+    }
+    rows.push(`${y}:${line.trimEnd()}`);
+  }
+  return rows.join(' || ');
+}
+
+function summarizePatchTypes(diff: ReadonlyArray<{
+  type: string;
+}>): string {
+  const counts = new Map<string, number>();
+  for (const patch of diff) {
+    counts.set(patch.type, (counts.get(patch.type) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).map(([type, count]) => `${type}=${count}`).join(', ');
+}
+
+function getStdoutPatchSnippet(diff: ReadonlyArray<{
+  type: string;
+  content?: string;
+}>,
+maxLen: number): string {
+  let out = '';
+  for (const patch of diff) {
+    if (patch.type !== 'stdout' || typeof patch.content !== 'string') {
+      continue;
+    }
+    out += patch.content;
+    if (out.length >= maxLen) {
+      break;
+    }
+  }
+  return out.slice(0, maxLen);
 }
 
 /**

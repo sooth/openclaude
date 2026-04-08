@@ -7,6 +7,7 @@ import { logForDebugging } from '../../utils/debug.js';
 import { logError } from '../../utils/log.js';
 import { EventEmitter } from '../events/emitter.js';
 import { InputEvent } from '../events/input-event.js';
+import instances from '../instances.js';
 import { TerminalFocusEvent } from '../events/terminal-focus-event.js';
 import { INITIAL_STATE, type ParsedInput, type ParsedKey, type ParsedMouse, parseMultipleKeypresses } from '../parse-keypress.js';
 import reconciler from '../reconciler.js';
@@ -537,6 +538,9 @@ function processKeysInBatch(app: App, items: ParsedInput[], _unused1: undefined,
     }
     app.handleInput(sequence);
     const event = new InputEvent(item);
+    if (!item.ctrl && !item.meta && !item.escape && !item.return && sequence.length > 0 && !sequence.startsWith('\x1b')) {
+      instances.get(app.props.stdout)?.noteDebugInput(`key:${JSON.stringify(sequence)}`);
+    }
     app.internal_eventEmitter.emit('input', event);
 
     // Also dispatch through the DOM tree so onKeyDown handlers fire.
