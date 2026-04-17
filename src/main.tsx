@@ -2915,6 +2915,7 @@ async function run(): Promise<CommanderCommand> {
     const initialState: AppState = {
       settings: getInitialSettings(),
       tasks: {},
+      parallelAgentBatches: {},
       agentNameRegistry: new Map(),
       verbose: verbose ?? getGlobalConfig().verbose ?? false,
       mainLoopModel: initialMainLoopModel,

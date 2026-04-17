@@ -116,6 +116,7 @@ export function createActivityDescriptionResolver(tools: Tools): ActivityDescrip
 export type LocalAgentTaskState = TaskStateBase & {
   type: 'local_agent';
   agentId: string;
+  batchId?: string;
   prompt: string;
   selectedAgent?: AgentDefinition;
   agentType: string;
@@ -194,6 +195,98 @@ export function drainPendingMessages(taskId: string, getAppState: () => AppState
 /**
  * Enqueue an agent notification to the message queue.
  */
+function enqueueParallelBatchNotification(taskId: string, setAppState: SetAppState): void {
+  let batchSummary:
+    | {
+        batchId: string;
+        description: string;
+        completed: number;
+        failed: number;
+        killed: number;
+        total: number;
+        toolUseId?: string;
+      }
+    | undefined;
+
+  setAppState(prev => {
+    const task = prev.tasks[taskId];
+    if (!isLocalAgentTask(task) || !task.batchId) {
+      return prev;
+    }
+
+    const batch = prev.parallelAgentBatches[task.batchId];
+    if (!batch || batch.notified) {
+      return prev;
+    }
+
+    if (batch.childTaskIds.length !== batch.expectedCount) {
+      return prev;
+    }
+
+    const childTasks = batch.childTaskIds
+      .map(id => prev.tasks[id])
+      .filter(isLocalAgentTask);
+
+    if (childTasks.length !== batch.expectedCount) {
+      return prev;
+    }
+
+    const terminalTasks = childTasks.filter(t =>
+      t.status === 'completed' || t.status === 'failed' || t.status === 'killed',
+    );
+    if (terminalTasks.length !== childTasks.length) {
+      return prev;
+    }
+
+    const completed = terminalTasks.filter(t => t.status === 'completed').length;
+    const failed = terminalTasks.filter(t => t.status === 'failed').length;
+    const killed = terminalTasks.filter(t => t.status === 'killed').length;
+
+    batchSummary = {
+      batchId: batch.id,
+      description: batch.description,
+      completed,
+      failed,
+      killed,
+      total: batch.expectedCount,
+      toolUseId: batch.toolUseId,
+    };
+
+    return {
+      ...prev,
+      parallelAgentBatches: {
+        ...prev.parallelAgentBatches,
+        [batch.id]: {
+          ...batch,
+          notified: true,
+        },
+      },
+    };
+  });
+
+  if (!batchSummary) {
+    return;
+  }
+
+  abortSpeculation(setAppState);
+  const toolUseIdLine = batchSummary.toolUseId
+    ? `\n<${TOOL_USE_ID_TAG}>${batchSummary.toolUseId}</${TOOL_USE_ID_TAG}>`
+    : '';
+  const summary =
+    batchSummary.failed > 0 || batchSummary.killed > 0
+      ? `Parallel agent batch "${batchSummary.description}" finished (${batchSummary.completed}/${batchSummary.total} completed, ${batchSummary.failed} failed, ${batchSummary.killed} stopped)`
+      : `Parallel agent batch "${batchSummary.description}" completed (${batchSummary.total}/${batchSummary.total})`;
+  const message = `<${TASK_NOTIFICATION_TAG}>
+<${TASK_ID_TAG}>${batchSummary.batchId}</${TASK_ID_TAG}>${toolUseIdLine}
+<${STATUS_TAG}>completed</${STATUS_TAG}>
+<${SUMMARY_TAG}>${summary}</${SUMMARY_TAG}>
+</${TASK_NOTIFICATION_TAG}>`;
+  enqueuePendingNotification({
+    value: message,
+    mode: 'task-notification',
+  });
+}
+
 export function enqueueAgentNotification({
   taskId,
   description,
@@ -259,6 +352,7 @@ export function enqueueAgentNotification({
     value: message,
     mode: 'task-notification'
   });
+  enqueueParallelBatchNotification(taskId, setAppState);
 }
 
 /**
@@ -470,7 +564,8 @@ export function registerAsyncAgent({
   selectedAgent,
   setAppState,
   parentAbortController,
-  toolUseId
+  toolUseId,
+  batchId
 }: {
   agentId: string;
   description: string;
@@ -479,6 +574,7 @@ export function registerAsyncAgent({
   setAppState: SetAppState;
   parentAbortController?: AbortController;
   toolUseId?: string;
+  batchId?: string;
 }): LocalAgentTaskState {
   void initTaskOutputAsSymlink(agentId, getAgentTranscriptPath(asAgentId(agentId)));
 
@@ -489,6 +585,7 @@ export function registerAsyncAgent({
     type: 'local_agent',
     status: 'running',
     agentId,
+    batchId,
     prompt,
     selectedAgent,
     agentType: selectedAgent.agentType ?? 'general-purpose',

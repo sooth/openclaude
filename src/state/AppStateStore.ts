@@ -158,6 +158,16 @@ export type AppState = DeepImmutable<{
 }> & {
   // Unified task state - excluded from DeepImmutable because TaskState contains function types
   tasks: { [taskId: string]: TaskState }
+  parallelAgentBatches: {
+    [batchId: string]: {
+      id: string
+      description: string
+      childTaskIds: string[]
+      expectedCount: number
+      toolUseId?: string
+      notified: boolean
+    }
+  }
   // Name → AgentId registry populated by Agent tool when `name` is provided.
   // Latest-wins on collision. Used by SendMessage to route by name.
   agentNameRegistry: Map<string, AgentId>
@@ -468,6 +478,7 @@ export function getDefaultAppState(): AppState {
   return {
     settings: getInitialSettings(),
     tasks: {},
+    parallelAgentBatches: {},
     agentNameRegistry: new Map(),
     verbose: false,
     mainLoopModel: null, // alias, full name (as with --model or env var), or null (default)
